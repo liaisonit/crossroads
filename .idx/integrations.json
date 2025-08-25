@@ -1,0 +1,6 @@
+{
+  "firebase_hosting": {
+    "deploymentHostingUrl": "https://n0-bugs.web.app"
+  },
+  "cloud_run_deploy": {}
+}

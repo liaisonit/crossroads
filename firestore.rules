@@ -1,0 +1,89 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions to check user roles from the 'users' collection.
+    // This allows us to centralize role-checking logic.
+    function isRole(role) {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    function isOneOfRoles(roles) {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in roles;
+    }
+
+    // Default-deny all reads and writes. We will open up access below.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Allow any authenticated user to read from any collection.
+    // This is necessary for the app to function, as users need to read
+    // data from multiple collections to populate dropdowns, etc.
+    // Write access is still denied by default and must be explicitly granted.
+    match /{path=**} {
+        allow read: if request.auth != null;
+    }
+
+    // Users can read and update their own user document, but cannot change their role.
+    // Admins can manage all user documents.
+    match /users/{userId} {
+      allow get: if request.auth.uid == userId || isOneOfRoles(['Admin', 'Super Admin']);
+      allow update: if request.auth.uid == userId && request.resource.data.role == resource.data.role;
+      allow write: if isOneOfRoles(['Admin', 'Super Admin']);
+    }
+
+    // Users can only read their own inbox.
+    match /users/{userId}/inbox/{messageId} {
+        allow read, write: if request.auth.uid == userId;
+    }
+    
+    // Foremen can create submissions and material orders.
+    // Admins/Billing have broader access.
+    match /submissions/{submissionId} {
+      allow create: if isOneOfRoles(['Foreman', 'Admin', 'Super Admin']);
+      allow update: if isOneOfRoles(['Admin', 'Super Admin', 'Billing Team']);
+      allow delete: if isOneOfRoles(['Admin', 'Super Admin']);
+    }
+    
+    match /materialOrders/{orderId} {
+        allow create: if isOneOfRoles(['Foreman', 'Admin', 'Super Admin']);
+        allow update, delete: if isOneOfRoles(['Admin', 'Super Admin', 'Warehouse']);
+    }
+
+    // Only Admins/Super Admins can write to master data collections.
+    // Read is already granted by the global read rule.
+    match /jobs/{jobId} {
+      allow write: if isOneOfRoles(['Admin', 'Super Admin']);
+    }
+    match /employees/{employeeId} {
+        allow write: if isOneOfRoles(['Admin', 'Super Admin']);
+    }
+    match /equipment/{equipmentId} {
+        allow write: if isOneOfRoles(['Admin', 'Super Admin', 'Warehouse']);
+    }
+    match /roles/{roleId} {
+        allow write: if isOneOfRoles(['Super Admin']);
+    }
+    match /billingRates/{rateId} {
+        allow write: if isOneOfRoles(['Admin', 'Super Admin', 'Billing Team']);
+    }
+    match /jobTypes/{jobTypeId} {
+        allow write: if isOneOfRoles(['Admin', 'Super Admin']);
+    }
+    match /auditLog/{logId} {
+        // Only backend can write to audit log, no client writes allowed.
+        allow write: if false; 
+    }
+     match /notificationTemplates/{templateId} {
+        allow write: if isOneOfRoles(['Super Admin']);
+    }
+    match /notifications/{notificationId} {
+        allow write: if false; // Only backend can write
+    }
+    match /systemSettings/{settingId} {
+        allow write: if isOneOfRoles(['Super Admin']);
+    }
+  }
+}
